@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <EmbeddedResource Include="**\*.cshtml" />
+        <EmbeddedResource Include="**\*.js" />
+        <EmbeddedResource Include="**\*.css" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Content Include="wwwroot\css\site.css">
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </Content>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\AspNetCorePlugin\AspNetCorePlugin.csproj" />
+    </ItemGroup>
+
+    <Target Name="CopyClientPlugin" BeforeTargets="AfterBuild">
+        <Exec Command="copy /y bin\Debug\net8.0\ClientPlugin.dll ..\AspNetCorePlugin" />
+    </Target>
+</Project>
