@@ -20,7 +20,9 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\AspNetCorePlugin\AspNetCorePlugin.csproj" />
+      <Reference Include="AspNetCorePlugin">
+        <HintPath>..\AspNetCorePlugin\bin\Debug\net8.0\AspNetCorePlugin.dll</HintPath>
+      </Reference>
     </ItemGroup>
 
     <Target Name="CopyClientPlugin" BeforeTargets="AfterBuild">

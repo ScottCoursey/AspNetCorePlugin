@@ -23,15 +23,82 @@ namespace AspNetCorePlugin
             var pluginFolder = Path.Combine(execFolder, "Plugins");
             var customViewsFolder = Path.Combine(execFolder, "Plugins", "CustomViews");
             var customStaticFolder = Path.Combine(execFolder, "Plugins", "CustomStatic"); // New folder for static files
-            if (!Directory.Exists(customViewsFolder))
+
+            CreatePluginFolders(customViewsFolder, customStaticFolder);
+            ExtractPluginContent(serviceList, pluginFolder, customViewsFolder, customStaticFolder);
+
+            var builder = WebApplication.CreateBuilder(args);
+
+            builder.Services.AddHttpContextAccessor(); // For IHttpContextAccessor
+
+            // Create dynamic provider for custom views
+            var dynamicFileProvider = new DynamicViewFileProvider(customViewsFolder);
+
+            // Create embedded provider for in-memory fallback (compiled/published)
+            var embeddedFileProvider = new EmbeddedFileProvider(Assembly.GetExecutingAssembly());
+
+            // Create composite: custom files first, then embedded resources, then physical root
+            var compositeProvider = new CompositeFileProvider(dynamicFileProvider, embeddedFileProvider, builder.Environment.ContentRootFileProvider);
+
+            // Set the app's content root provider to the composite
+            builder.Environment.ContentRootFileProvider = compositeProvider;
+            Console.WriteLine("Set app ContentRootFileProvider to composite: custom first, then embedded resources, then original root.");
+
+            builder.Services.AddRazorPages();
+            builder.Services.AddControllersWithViews()
+                .AddRazorOptions(options =>
+                {
+                    options.ViewLocationFormats.Clear();
+                    options.ViewLocationFormats.Add("{0}");
+                    //options.ViewLocationExpanders.Add(new CustomViewLocationExpander(customViewsFolder));
+                })
+                .AddRazorRuntimeCompilation(options =>
+                {
+                    // Clear and set to composite for runtime compilation
+                    options.FileProviders.Clear();
+                    options.FileProviders.Add(compositeProvider);
+                });
+
+            foreach (var service in serviceList)
             {
-                Directory.CreateDirectory(customViewsFolder);
-            }
-            if (!Directory.Exists(customStaticFolder))
-            {
-                Directory.CreateDirectory(customStaticFolder);
+                builder.Services.AddScoped(service.Service, service.Implementation);
             }
 
+            var app = builder.Build();
+
+            if (app.Environment.IsDevelopment())
+            {
+                app.UseDeveloperExceptionPage();
+            }
+            else
+            {
+                app.UseExceptionHandler("/Error");
+                app.UseHsts();
+            }
+
+            app.UseHttpsRedirection();
+
+            var staticDynamicProvider = new PhysicalFileProvider(customStaticFolder);
+            var compositeStaticProvider = new CompositeFileProvider(staticDynamicProvider, app.Environment.WebRootFileProvider);
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = compositeStaticProvider,
+                RequestPath = "" // Serve from root
+            });
+
+            app.UseRouting();
+            app.UseAuthorization();
+
+            app.MapControllerRoute(
+                name: "default",
+                pattern: "{controller=Home}/{action=Index}/{id?}");
+            app.MapRazorPages();
+
+            app.Run();
+        }
+
+        private static void ExtractPluginContent(List<ServiceSet> serviceList, string pluginFolder, string customViewsFolder, string customStaticFolder)
+        {
             if (Directory.Exists(pluginFolder))
             {
                 var context = new AssemblyLoadContext("Plugins", true);
@@ -127,74 +194,18 @@ namespace AspNetCorePlugin
             {
                 Console.WriteLine($"Plugin folder {pluginFolder} does not exist");
             }
+        }
 
-            var builder = WebApplication.CreateBuilder(args);
-
-            // Create dynamic provider for custom views
-            var dynamicFileProvider = new DynamicViewFileProvider(customViewsFolder);
-
-            // Create embedded provider for in-memory fallback (compiled/published)
-            var embeddedFileProvider = new EmbeddedFileProvider(Assembly.GetExecutingAssembly());
-
-            // Create composite: custom files first, then embedded resources, then physical root
-            var compositeProvider = new CompositeFileProvider(dynamicFileProvider, embeddedFileProvider, builder.Environment.ContentRootFileProvider);
-
-            // Set the app's content root provider to the composite
-            builder.Environment.ContentRootFileProvider = compositeProvider;
-            Console.WriteLine("Set app ContentRootFileProvider to composite: custom first, then embedded resources, then original root.");
-
-            builder.Services.AddRazorPages();
-            builder.Services.AddControllersWithViews()
-                .AddRazorOptions(options =>
-                {
-                    options.ViewLocationFormats.Clear();
-                    options.ViewLocationFormats.Add("{0}");
-                    options.ViewLocationFormats.Add("/Views/{0}");
-                    options.ViewLocationExpanders.Add(new CustomViewLocationExpander(customViewsFolder));
-                })
-                .AddRazorRuntimeCompilation(options =>
-                {
-                    // Clear and set to composite for runtime compilation
-                    options.FileProviders.Clear();
-                    options.FileProviders.Add(compositeProvider);
-                });
-
-            foreach (var service in serviceList)
+        private static void CreatePluginFolders(string customViewsFolder, string customStaticFolder)
+        {
+            if (!Directory.Exists(customViewsFolder))
             {
-                builder.Services.AddScoped(service.Service, service.Implementation);
+                Directory.CreateDirectory(customViewsFolder);
             }
-
-            var app = builder.Build();
-
-            if (app.Environment.IsDevelopment())
+            if (!Directory.Exists(customStaticFolder))
             {
-                app.UseDeveloperExceptionPage();
+                Directory.CreateDirectory(customStaticFolder);
             }
-            else
-            {
-                app.UseExceptionHandler("/Error");
-                app.UseHsts();
-            }
-
-            app.UseHttpsRedirection();
-
-            var staticDynamicProvider = new PhysicalFileProvider(customStaticFolder);
-            var compositeStaticProvider = new CompositeFileProvider(staticDynamicProvider, app.Environment.WebRootFileProvider);
-            app.UseStaticFiles(new StaticFileOptions
-            {
-                FileProvider = compositeStaticProvider,
-                RequestPath = "" // Serve from root
-            });
-
-            app.UseRouting();
-            app.UseAuthorization();
-
-            app.MapControllerRoute(
-                name: "default",
-                pattern: "{controller=Home}/{action=Index}/{id?}");
-            app.MapRazorPages();
-
-            app.Run();
         }
 
         public static string GetExecutableFolder()

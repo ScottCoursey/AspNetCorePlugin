@@ -17,10 +17,14 @@ namespace AspNetCorePlugin.Controllers
         {
             var model = new IndexViewModel
             {
-                ComputedValue = _pluggableService.ComputeValue()
+                ComputedValue = _pluggableService.ComputeValue() + " CHANGED"
             };
-            return View("/Views/Home/Index.cshtml", model);
+            return View("Index.cshtml", model);
         }
 
+        public IActionResult Privacy()
+        {
+            return View("Privacy.cshtml");
+        }
     }
 }

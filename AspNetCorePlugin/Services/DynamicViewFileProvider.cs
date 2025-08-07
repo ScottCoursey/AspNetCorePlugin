@@ -22,6 +22,16 @@ namespace AspNetCorePlugin.Services
 
         public IFileInfo GetFileInfo(string subpath)
         {
+            var httpContext = new HttpContextAccessor().HttpContext;
+            string controllerName = "";
+            string actionName = "";
+            if (httpContext != null)
+            {
+                var routeData = httpContext?.GetRouteData();
+                controllerName = (routeData?.Values["controller"] as string) ?? "";
+                actionName = (routeData?.Values["action"] as string) ?? "";
+            }
+
             if (!_rootExists)
             {
                 return new NotFoundFileInfo(subpath);
@@ -30,31 +40,52 @@ namespace AspNetCorePlugin.Services
             var filePath = Path.Combine(_viewsRootPath, subpath.TrimStart('/'));
             var fileInfo = new PhysicalFileInfo(new FileInfo(filePath));
 
-            if (!fileInfo.Exists)
-            {
-                filePath = Path.Combine(_projectRoot, subpath.TrimStart('/'));
-                fileInfo = new PhysicalFileInfo(new FileInfo(filePath));
-            }
-
-            if (!fileInfo.Exists)
-            {
-                filePath = Path.Combine(_projectRoot, "Views", subpath.TrimStart('/'));
-                fileInfo = new PhysicalFileInfo(new FileInfo(filePath));
-            }
-
             if (fileInfo.Exists)
             {
                 return fileInfo;
             }
 
+            var prefixes = new List<string>()
+            {
+                "",
+                "Views",
+                controllerName,
+                $"{controllerName}/{actionName}",
+                $"Views/{controllerName}",
+                $"Views/{controllerName}/{actionName}"
+            };
+
+            foreach (var prefix in prefixes)
+            {
+                filePath = Path.Combine(_projectRoot, prefix, subpath.TrimStart('/'));
+                fileInfo = new PhysicalFileInfo(new FileInfo(filePath));
+
+                if (fileInfo.Exists)
+                {
+                    return fileInfo;
+                }
+            }
+
             // Can't be found as a file, so might exist as a resource (ie, published).
             var normalizedSubpath = subpath.TrimStart('/').Replace("/", ".");
             normalizedSubpath = normalizedSubpath.Replace("Pages.", "Views.");
+
             var resourceName = $"AspNetCorePlugin.Views.{normalizedSubpath}";
             var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName);
             if (stream != null)
             {
                 return new EmbeddedResourceFileInfo(resourceName, stream, Assembly.GetExecutingAssembly());
+            }
+
+            foreach (var prefix in prefixes)
+            {
+                resourceName = $"AspNetCorePlugin.Views.{normalizedSubpath}";
+                stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName);
+
+                if (stream != null)
+                {
+                    return new EmbeddedResourceFileInfo(resourceName, stream, Assembly.GetExecutingAssembly());
+                }
             }
 
             return new NotFoundFileInfo(subpath);
